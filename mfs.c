@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <string.h>
 #include <signal.h>
+#include <stdint.h>
 
 #define MAX_NUM_ARGUMENTS 3
 
@@ -25,6 +26,46 @@ int8_t BPB_SecPerClus;
 int16_t BPB_RsvdSecCnt;
 int8_t BPB_NumFATs;
 int32_t BPB_FATz32;
+
+struct __attribute__((__packed__)) DirectoryEntry
+{
+  char DIR_Name[11];
+  uint8_t DIR_Attr;
+  uint8_t unused[8];
+  uint16_t ClusterHigh;
+  uint8_t unused2[4];
+  uint16_t ClusterLow;
+  uint32_t size;
+};
+
+struct DirectoryEntry dir[16];
+
+FILE *fp = NULL;
+
+/*
+  LBAToOffset function returns the value of the address in that block of data
+*/
+int LBAToOffset(int sector)
+{
+  //handles root dir quirk
+  if(sector == 0)
+  {
+    sector = 2;
+  }
+  return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec);
+}
+
+/*
+  NextLB returns unsigned interger for next block address of file
+*/
+unsigned NextLB(int sector)
+{
+  int FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
+  unsigned value;
+  // fseek(file, FATAddress, SEEK_SET);
+  // fread(&value, 2, 1, file);
+  return value;
+}
 
 void info();
 
@@ -98,6 +139,18 @@ int main()
       // Change directory function using token[1] as to grab string FOLLOWING "cd"
       chdir(token[1]);
     }
+    else if (!(strcmp(token[0], "open")))
+    {
+      if (fp = fopen(token[1], "r")) 
+      {
+        printf("Opening file.\n");
+      }
+      else
+      {
+        printf("Error: File system image not found.\n");
+      }
+    
+    }
     else if (!(strcmp(token[0], "info")))
     {
       info();
@@ -111,7 +164,6 @@ int main()
 
 void info()
 {
-  FILE *fp = NULL;
   fp = fopen("fat32.img", "r");
   fseek(fp, 11, SEEK_SET);
   fread(&BPB_BytsPerSec, 2, 1, fp);
@@ -127,9 +179,45 @@ void info()
 
   fseek(fp, 16, SEEK_SET);
   fread(&BPB_NumFATs, 1, 1, fp);
-  printf("BPB_BytsPerSec = %d\n", BPB_BytsPerSec);
+  printf("BPB_NumFATs = %d\n", BPB_NumFATs);
 
   fseek(fp, 36, SEEK_SET);
-  fread(&BPB_BytsPerSec, 4, 1, fp);
-  printf("BPB_BytsPerSec = %d\n", BPB_BytsPerSec);
+  fread(&BPB_FATz32, 4, 1, fp);
+  printf("BPB_FATz32 = %d\n", BPB_FATz32);
+  
+  //LS
+  fseek(fp, 0x100400, SEEK_SET);
+  fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+
+  for (int i = 0; i < 16; i++)
+  {
+    printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
+  }
+
+  //get 
+  int offset = LBAToOffset(17);
+  printf("Offset = %d\n", offset);
+  fseek(fp, offset, SEEK_SET);
+
+  FILE *ofp = fopen("bar.txt", "w");
+
+  uint8_t buffer[512];
+
+  fread(&buffer, 512, 1, fp);
+  fwrite(&buffer, dir[0].size, 1, ofp);
+
+  //cd 
+  // anytime you cd if lowcluster num is 0, set to 2
+  offset = LBAToOffset(6099);
+  fseek(fp, offset, SEEK_SET);
+  fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+  dir[0].ClusterLow = 2;
+
+  for (int i = 0; i < 16; i++)
+  {
+    printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
+  }
+  
+  //read loop until nextLB = -1
+  fclose(ofp);
 }
