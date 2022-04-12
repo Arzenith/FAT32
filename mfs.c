@@ -20,6 +20,13 @@
 
 #define MAX_COMMAND_SIZE 255    // The maximum command-line size
 
+int16_t BPB_BytsPerSec;
+int8_t BPB_SecPerClus;
+int16_t BPB_RsvdSecCnt;
+int8_t BPB_NumFATs;
+int32_t BPB_FATz32;
+
+void info();
 
 int main()
 {
@@ -91,13 +98,38 @@ int main()
       // Change directory function using token[1] as to grab string FOLLOWING "cd"
       chdir(token[1]);
     }
-    else
+    else if (!(strcmp(token[0], "info")))
     {
-
+      info();
     }
 
 
     free( working_root );
   }
   return 0;
+}
+
+void info()
+{
+  FILE *fp = NULL;
+  fp = fopen("fat32.img", "r");
+  fseek(fp, 11, SEEK_SET);
+  fread(&BPB_BytsPerSec, 2, 1, fp);
+  printf("BPB_BytsPerSec = %d\n", BPB_BytsPerSec);
+
+  fseek(fp, 13, SEEK_SET);
+  fread(&BPB_SecPerClus, 1, 1, fp);
+  printf("BPB_SecPerClus = %d\n", BPB_SecPerClus);
+
+  fseek(fp, 14, SEEK_SET);
+  fread(&BPB_RsvdSecCnt, 2, 1, fp);
+  printf("BPB_RsvdSecCnt = %d\n", BPB_RsvdSecCnt);
+
+  fseek(fp, 16, SEEK_SET);
+  fread(&BPB_NumFATs, 1, 1, fp);
+  printf("BPB_BytsPerSec = %d\n", BPB_BytsPerSec);
+
+  fseek(fp, 36, SEEK_SET);
+  fread(&BPB_BytsPerSec, 4, 1, fp);
+  printf("BPB_BytsPerSec = %d\n", BPB_BytsPerSec);
 }
