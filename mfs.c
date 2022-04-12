@@ -1,24 +1,5 @@
-// The MIT License (MIT)
-// 
-// Copyright (c) 2020 Trevor Bakker 
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
+// Patrick Arzoumanian
+// Nghia Lam
 
 #define _GNU_SOURCE
 
@@ -42,10 +23,6 @@
 
 int main()
 {
-
-  // Here is a test
-  //test 2
-  
   char * cmd_str = (char*) malloc( MAX_COMMAND_SIZE );
 
   while( 1 )
@@ -91,14 +68,36 @@ int main()
     // Now print the tokenized input as a debug check
     // \TODO Remove this code and replace with your FAT32 functionality
 
-    int token_index  = 0;
-    for( token_index = 0; token_index < token_count; token_index ++ ) 
+    // int token_index  = 0;
+    // for( token_index = 0; token_index < token_count; token_index ++ ) 
+    // {
+    //   printf("token[%d] = %s\n", token_index, token[token_index] );  
+    // }
+
+    if (token[0] == NULL)
     {
-      printf("token[%d] = %s\n", token_index, token[token_index] );  
+      continue;
     }
 
-    free( working_root );
+    if (!(strcmp(token[0], "quit")) || !(strcmp(token[0], "exit")))
+    {
+      free(working_root);
+      exit(0);
+      return 0;
+    }
+    // REQUIREMENT 10: Shell supports cd comma  nd
+    else if (!(strcmp(token[0], "cd")))
+    {
+      // Change directory function using token[1] as to grab string FOLLOWING "cd"
+      chdir(token[1]);
+    }
+    else
+    {
 
+    }
+
+
+    free( working_root );
   }
   return 0;
 }
