@@ -44,7 +44,8 @@ int main()
 {
 
   // Here is a test
-
+  //test 2
+  
   char * cmd_str = (char*) malloc( MAX_COMMAND_SIZE );
 
   while( 1 )
