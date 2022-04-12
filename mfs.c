@@ -140,6 +140,9 @@ int main()
     else if (!(strcmp(token[0], "o")))
     {
       fp = fopen("fat32.img", "r");
+      // Fseek to root dir, now that they've opened the image
+      fseek(fp, 0x100400, SEEK_SET);
+      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
     }
     // Any command issued after a close, except for open shall result in "Error: File system image must be opened first"
     else if((strcmp(token[0], "open")) && fp == NULL)
@@ -160,6 +163,10 @@ int main()
       {
         printf("Error: File system image not found.\n");
       }
+
+      // Fseek to root dir, now that they've opened the image
+      fseek(fp, 0x100400, SEEK_SET);
+      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
     }
     else if (!(strcmp(token[0], "close")))
     {
@@ -181,6 +188,25 @@ int main()
     {
       // Change directory function using token[1] as to grab string FOLLOWING "cd"
       chdir(token[1]);
+    }
+    else if (!(strcmp(token[0], "ls")))
+    {
+      char temp[10];
+      // Loop through directory...
+      for (int i = 0; i < 16; i++)
+      {
+        // NULL terminate the string for printing purposes
+        dir[i].DIR_Name[12] = '\0';
+
+        // Save the file's attribute as a hex value into a string
+        sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+
+        // Only print files with attributes "0x01", "0x10", "0x20"
+        if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20")))
+        {
+          printf("%s\n",dir[i].DIR_Name);
+        }
+      }
     }
     else
     {
