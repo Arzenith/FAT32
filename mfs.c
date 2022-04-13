@@ -46,7 +46,7 @@ FILE *fp = NULL;
 /*
   LBAToOffset function returns the value of the address in that block of data
 */
-int LBAToOffset(int sector)
+int LBAToOffset(int32_t sector)
 {
   //handles root dir quirk
   if(sector == 0)
@@ -59,17 +59,16 @@ int LBAToOffset(int sector)
 /*
   NextLB returns unsigned interger for next block address of file
 */
-unsigned NextLB(int sector)
+int16_t NextLB(int32_t sector)
 {
   int FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
-  unsigned value;
+  int16_t value;
   fseek(fp, FATAddress, SEEK_SET);
   fread(&value, 2, 1, fp);
   return value;
 }
 
 void int_to_hex(int num);
-void grab_info();
 void open(char **token);
 void close_f();
 void print_info();
@@ -78,6 +77,9 @@ void ls();
 void read_f(char **token);
 void del();
 void undel();
+void load_dir();
+void load_img();
+void get(char **token);
 
 int find_file(char **token);
 int find_folder(char **token);
@@ -129,11 +131,11 @@ int main()
     // Now print the tokenized input as a debug check
     // \TODO Remove this code and replace with your FAT32 functionality
 
-    // int token_index  = 0;
-    // for( token_index = 0; token_index < token_count; token_index ++ ) 
-    // {
-    //   printf("token[%d] = %s\n", token_index, token[token_index] );  
-    // }
+    int token_index  = 0;
+    for( token_index = 0; token_index < token_count; token_index ++ ) 
+    {
+      printf("token[%d] = %s\n", token_index, token[token_index] );  
+    }
 
     if (token[0] == NULL)
     {
@@ -155,12 +157,8 @@ int main()
       fseek(fp, 0x100400, SEEK_SET);
       fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
 
-      for (int i = 0; i < 16; i++)
-      {
-        // NULL terminate the string to remove the garbage
-        dir[i].DIR_Name[12] = '\0';
-      }
-      grab_info();
+      load_img();
+      load_dir();
     }
     // Any command issued after a close, except for open shall result in "Error: File system image must be opened first"
     else if((strcmp(token[0], "open")) && fp == NULL)
@@ -181,44 +179,22 @@ int main()
     }
     else if (!(strcmp(token[0], "stat")))
     {
+      // ONLY SUPPORTS FILES AT THE MOMENT
       int i = find_file(token);
       if(i != -1)
       {
         printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
         continue;
       }
+      printf("Error: File not found.\n");
     }
     else if (!(strcmp(token[0], "get")))
     {
-      char saved_input[strlen(token[1])];
-      strcpy(saved_input, token[1]);
-
-      int i = find_file(token);
-      if(i != -1)
-      {
-        uint8_t buffer[512];
-      
-        int offset = LBAToOffset((int)dir[i].ClusterLow);
-
-        fseek(fp, offset, SEEK_SET);
-        FILE *ofp = fopen(saved_input, "w");
-
-        fread(&buffer, 512, 1, fp);
-        fwrite(&buffer, dir[0].size, 1, ofp);
-
-        fclose(ofp);
-        continue;
-      }
-      printf("Error: File not found.\n");
+      get(token);
     }
     else if (!(strcmp(token[0], "cd")))
     {
-      int i = find_folder(token);
-      if(i != -1)
-      {
-        continue;
-      }
-      printf("Error: Folder not found.\n");
+      cd(token);
     }
     else if (!(strcmp(token[0], "ls")))
     {
@@ -287,17 +263,13 @@ void open(char **token)
     printf("Error: File system image not found.\n");
   }
 
-  grab_info();
+  load_img();
 
   // Fseek to root dir, now that they've opened the image
   fseek(fp, 0x100400, SEEK_SET);
   fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+  load_dir();
 
-  for (int i = 0; i < 16; i++)
-  {
-    // NULL terminate the string to remove the garbage
-    dir[i].DIR_Name[12] = '\0';
-  }
 }
 
 void close_f()
@@ -313,8 +285,7 @@ void close_f()
   }
 }
 
-// Function loads in global data of .img file
-void grab_info()
+void load_img()
 {
   fseek(fp, 11, SEEK_SET);
   fread(&BPB_BytsPerSec, 2, 1, fp);
@@ -326,6 +297,16 @@ void grab_info()
   fread(&BPB_NumFATs, 1, 1, fp);
   fseek(fp, 36, SEEK_SET);
   fread(&BPB_FATz32, 4, 1, fp);
+}
+
+// Function loads in global data of .img file
+void load_dir()
+{
+  for (int i = 0; i < 16; i++)
+  {
+    // NULL terminate the string to remove the garbage
+    dir[i].DIR_Name[12] = '\0';
+  }
 }
 
 void print_info()
@@ -350,9 +331,17 @@ void print_info()
 
 void cd(char **token)
 {
-  // int offset = LBAToOffset(6099);
-  // fseek(fp, offset, SEEK_SET);
-  // fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+  // only supports cding back a directorie at the moment, not forward
+  int i = find_folder(token);
+  if(i != -1)
+  {
+    int offset = LBAToOffset(dir[i].ClusterLow);
+    fseek(fp, offset, SEEK_SET);
+    fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+    load_dir();
+    return;
+  }
+  printf("Error: Folder not found.\n");
 }
 
 void ls()
@@ -372,9 +361,57 @@ void ls()
   }
 }
 
+void get(char **token)
+{
+  // Save input becuase find_file messes with token
+  char saved_input[strlen(token[1])];
+  strcpy(saved_input, token[1]);
+
+  int i = find_file(token);
+  if(i != -1)
+  {
+    int offset = LBAToOffset(dir[i].ClusterLow);
+
+    FILE *ofp = fopen(saved_input, "w");
+
+    uint8_t buffer[dir[i].size];
+
+    fseek(fp, offset, SEEK_SET);
+    fread(&buffer, dir[i].size + 1, 1, fp);
+    fwrite(&buffer, dir[i].size + 1, 1, ofp);
+
+    fclose(ofp);
+    return;
+  }
+  printf("Error: File not found.\n");
+}
+
 void read_f(char **token)
 {
+  if(token[1] == NULL || token[2] == NULL || token[3] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
   
+  char saved_input[strlen(token[1])];
+  strcpy(saved_input, token[1]);
+  int position = atoi(token[2]);
+  int num_bytes = atoi(token[3]);
+
+  int i = find_file(token);
+  if(i != -1)
+  {
+    int offset = LBAToOffset(dir[i].ClusterLow);
+    int num_sectors = dir[i].size / 512;
+    uint8_t buffer[num_bytes];
+    fseek(fp, offset + position, SEEK_SET);
+    fread(&buffer, num_bytes + 1, 1, fp);
+
+    printf("%s\n", buffer);
+    return;
+  }
+  printf("Error: File not found.\n");
 }
 
 int find_file(char **token)
