@@ -11,6 +11,7 @@
 #include <string.h>
 #include <signal.h>
 #include <stdint.h>
+#include <ctype.h>
 
 #define MAX_NUM_ARGUMENTS 3
 
@@ -42,8 +43,6 @@ struct DirectoryEntry dir[16];
 
 FILE *fp = NULL;
 
-void int_to_hex(int num);
-
 /*
   LBAToOffset function returns the value of the address in that block of data
 */
@@ -70,6 +69,7 @@ unsigned NextLB(int sector)
 }
 
 void info();
+void int_to_hex(int num);
 
 int main()
 {
@@ -140,9 +140,16 @@ int main()
     else if (!(strcmp(token[0], "o")))
     {
       fp = fopen("fat32.img", "r");
+
       // Fseek to root dir, now that they've opened the image
       fseek(fp, 0x100400, SEEK_SET);
       fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+      
+      for (int i = 0; i < 16; i++)
+      {
+        // NULL terminate the string to remove the garbage
+        dir[i].DIR_Name[12] = '\0';
+      }
     }
     // Any command issued after a close, except for open shall result in "Error: File system image must be opened first"
     else if((strcmp(token[0], "open")) && fp == NULL)
@@ -167,6 +174,12 @@ int main()
       // Fseek to root dir, now that they've opened the image
       fseek(fp, 0x100400, SEEK_SET);
       fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+
+      for (int i = 0; i < 16; i++)
+      {
+        // NULL terminate the string to remove the garbage
+        dir[i].DIR_Name[12] = '\0';
+      }
     }
     else if (!(strcmp(token[0], "close")))
     {
@@ -186,8 +199,9 @@ int main()
     }
     else if (!(strcmp(token[0], "cd")))
     {
-      // Change directory function using token[1] as to grab string FOLLOWING "cd"
-      chdir(token[1]);
+      // int offset = LBAToOffset(6099);
+      // fseek(fp, offset, SEEK_SET);
+      // fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
     }
     else if (!(strcmp(token[0], "ls")))
     {
@@ -195,9 +209,6 @@ int main()
       // Loop through directory...
       for (int i = 0; i < 16; i++)
       {
-        // NULL terminate the string for printing purposes
-        dir[i].DIR_Name[12] = '\0';
-
         // Save the file's attribute as a hex value into a string
         sprintf(temp, "0x%02X", dir[i].DIR_Attr);
 
@@ -205,6 +216,82 @@ int main()
         if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20")))
         {
           printf("%s\n",dir[i].DIR_Name);
+        }
+      }
+    }
+    else if (!(strcmp(token[0], "stat")))
+    {
+      // Save the input so we can open the file later if we find it
+      char saved_input[strlen(token[1])];
+      strcpy(saved_input, token[1]);
+
+      // Make two temp strings, format them similarly, and compare to find file
+      // Make temp string with everything up to file extention
+      char *trimmed_input = strtok(token[1], ".");
+      // Make another string with the length of the input (+1 for '\0')
+      char trimmed_file[strlen(trimmed_input) + 1];
+
+      // Loop through directory
+      for(int i = 0; i < 16; i++)
+      {
+        // Format the dir file name to lowecase so we can compare
+        for(int j = 0; j < strlen(trimmed_input); j++)
+        {
+          // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
+          trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
+        }
+        trimmed_file[strlen(trimmed_input)] = '\0';
+        
+        if(!strcmp(trimmed_input, trimmed_file))
+        {
+          printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
+        }
+      }
+    }
+    else if (!(strcmp(token[0], "get")))
+    {
+      int num = 0;
+      // Save the input so we can open the file later if we find it
+      char saved_input[strlen(token[1])];
+      strcpy(saved_input, token[1]);
+
+      // Make two temp strings, format them similarly, and compare to find file
+      // Make temp string with everything up to file extention
+      char *trimmed_input = strtok(token[1], ".");
+      // Make another string with the length of the input (+1 for '\0')
+      char trimmed_file[strlen(trimmed_input) + 1];
+
+      // Loop through directory
+      for(int i = 0; i < 16; i++)
+      {
+        // format the dir file name to lowecase so we can compare
+        for(int j = 0; j < strlen(trimmed_input); j++)
+        {
+          // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
+          trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
+        }
+        trimmed_file[strlen(trimmed_input)] = '\0';
+        
+        if(!strcmp(trimmed_input, trimmed_file))
+        {
+          printf("File found!\n");
+
+          // NOT WORKING RIGHT NOW
+          // int offset;
+          // uint8_t buffer[512];
+          // printf("low clus = %d\n", (int)dir[num].ClusterLow);
+          // offset = LBAToOffset(17);
+          // printf("Offset = %d\n", offset);
+          // offset = LBAToOffset((int)dir[num].ClusterLow);
+          // printf("Offset = %d\n", offset);
+
+          // fseek(fp, offset, SEEK_SET);
+          // FILE *ofp = fopen(saved_input, "w");
+
+          // fread(&buffer, 512, 1, fp);
+          // fwrite(&buffer, dir[0].size, 1, ofp);
+
+          // fclose(ofp);
         }
       }
     }
@@ -247,6 +334,9 @@ void info()
   printf("\nBPB_FATz32     = %-5d\t", BPB_FATz32);
   int_to_hex(BPB_FATz32);
 
+  // int offset = LBAToOffset(17);
+  // printf("\nOffset = %d\n", offset);
+
   printf("\n");
 }
 
@@ -275,14 +365,6 @@ void int_to_hex(int num)
 	}
 }
 
-  // //LS
-  // fseek(fp, 0x100400, SEEK_SET);
-  // fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-
-  // for (int i = 0; i < 16; i++)
-  // {
-  //   printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
-  // }
 
   // //get 
   // int offset = LBAToOffset(17);
@@ -308,5 +390,5 @@ void int_to_hex(int num)
   //   printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
   // }
   
-  // //read loop until nextLB = -1
+  //read loop until nextLB = -1
   // fclose(ofp);
