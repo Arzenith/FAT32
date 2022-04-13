@@ -69,9 +69,10 @@ unsigned NextLB(int sector)
 }
 
 void int_to_hex(int num);
+void grab_info();
 void open(char **token);
 void close_f();
-void info();
+void print_info();
 void stat(char **token);
 void get(char **token);
 void cd();
@@ -158,6 +159,7 @@ int main()
         // NULL terminate the string to remove the garbage
         dir[i].DIR_Name[12] = '\0';
       }
+      grab_info();
     }
     // Any command issued after a close, except for open shall result in "Error: File system image must be opened first"
     else if((strcmp(token[0], "open")) && fp == NULL)
@@ -174,7 +176,7 @@ int main()
     }
     else if (!(strcmp(token[0], "info")))
     {
-      info();
+      print_info();
     }
     else if (!(strcmp(token[0], "stat")))
     {
@@ -252,6 +254,8 @@ void open(char **token)
     printf("Error: File system image not found.\n");
   }
 
+  grab_info();
+
   // Fseek to root dir, now that they've opened the image
   fseek(fp, 0x100400, SEEK_SET);
   fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
@@ -276,35 +280,37 @@ void close_f()
   }
 }
 
-void info()
+// Function loads in global data of .img file
+void grab_info()
 {
   fseek(fp, 11, SEEK_SET);
   fread(&BPB_BytsPerSec, 2, 1, fp);
+  fseek(fp, 13, SEEK_SET);
+  fread(&BPB_SecPerClus, 1, 1, fp);
+  fseek(fp, 14, SEEK_SET);
+  fread(&BPB_RsvdSecCnt, 2, 1, fp);
+  fseek(fp, 16, SEEK_SET);
+  fread(&BPB_NumFATs, 1, 1, fp);
+  fseek(fp, 36, SEEK_SET);
+  fread(&BPB_FATz32, 4, 1, fp);
+}
+
+void print_info()
+{
   printf("BPB_BytsPerSec = %-5d\t", BPB_BytsPerSec);
   int_to_hex(BPB_BytsPerSec);
 
-  fseek(fp, 13, SEEK_SET);
-  fread(&BPB_SecPerClus, 1, 1, fp);
   printf("\nBPB_SecPerClus = %-5d\t", BPB_SecPerClus);
   int_to_hex(BPB_SecPerClus);
 
-  fseek(fp, 14, SEEK_SET);
-  fread(&BPB_RsvdSecCnt, 2, 1, fp);
   printf("\nBPB_RsvdSecCnt = %-5d\t", BPB_RsvdSecCnt);
   int_to_hex(BPB_RsvdSecCnt);
 
-  fseek(fp, 16, SEEK_SET);
-  fread(&BPB_NumFATs, 1, 1, fp);
   printf("\nBPB_NumFATs    = %-5d\t", BPB_NumFATs);
   int_to_hex(BPB_NumFATs);
 
-  fseek(fp, 36, SEEK_SET);
-  fread(&BPB_FATz32, 4, 1, fp);
   printf("\nBPB_FATz32     = %-5d\t", BPB_FATz32);
   int_to_hex(BPB_FATz32);
-
-  // int offset = LBAToOffset(17);
-  // printf("\nOffset = %d\n", offset);
 
   printf("\n");
 }
@@ -367,25 +373,19 @@ void get(char **token)
     
     if(!strcmp(trimmed_input, trimmed_file))
     {
-      printf("File found!\n");
-      return;
-
       // NOT WORKING RIGHT NOW
-      // int offset;
-      // uint8_t buffer[512];
-      // printf("low clus = %d\n", (int)dir[num].ClusterLow);
-      // offset = LBAToOffset(17);
-      // printf("Offset = %d\n", offset);
-      // offset = LBAToOffset((int)dir[num].ClusterLow);
-      // printf("Offset = %d\n", offset);
+      uint8_t buffer[512];
+      
+      int offset = LBAToOffset((int)dir[i].ClusterLow);
 
-      // fseek(fp, offset, SEEK_SET);
-      // FILE *ofp = fopen(saved_input, "w");
+      fseek(fp, offset, SEEK_SET);
+      FILE *ofp = fopen(saved_input, "w");
 
-      // fread(&buffer, 512, 1, fp);
-      // fwrite(&buffer, dir[0].size, 1, ofp);
+      fread(&buffer, 512, 1, fp);
+      fwrite(&buffer, dir[0].size, 1, ofp);
 
-      // fclose(ofp);
+      fclose(ofp);
+      return;
     }
   }
   printf("Error: File not found.\n");
