@@ -68,8 +68,16 @@ unsigned NextLB(int sector)
   return value;
 }
 
-void info();
 void int_to_hex(int num);
+void open(char **token);
+void close_f();
+void info();
+void stat(char **token);
+void get(char **token);
+void cd();
+void ls();
+void del();
+void undel();
 
 int main()
 {
@@ -144,7 +152,7 @@ int main()
       // Fseek to root dir, now that they've opened the image
       fseek(fp, 0x100400, SEEK_SET);
       fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-      
+
       for (int i = 0; i < 16; i++)
       {
         // NULL terminate the string to remove the garbage
@@ -158,142 +166,39 @@ int main()
     }
     else if (!(strcmp(token[0], "open")))
     {
-      if(fp != NULL)
-      {
-        printf("Error: File system image already open.\n");
-      }
-      else if (fp = fopen(token[1], "r")) 
-      {
-        printf("Opening file.\n");
-      }
-      else
-      {
-        printf("Error: File system image not found.\n");
-      }
-
-      // Fseek to root dir, now that they've opened the image
-      fseek(fp, 0x100400, SEEK_SET);
-      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-
-      for (int i = 0; i < 16; i++)
-      {
-        // NULL terminate the string to remove the garbage
-        dir[i].DIR_Name[12] = '\0';
-      }
+      open(token);
     }
     else if (!(strcmp(token[0], "close")))
     {
-      if(fp == NULL)
-      {
-        printf("Error: File system not open.\n");
-      }
-      else
-      {
-        fclose(fp);
-        fp = NULL;
-      }
+      close_f();
     }
     else if (!(strcmp(token[0], "info")))
     {
       info();
     }
-    else if (!(strcmp(token[0], "cd")))
-    {
-      // int offset = LBAToOffset(6099);
-      // fseek(fp, offset, SEEK_SET);
-      // fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-    }
-    else if (!(strcmp(token[0], "ls")))
-    {
-      char temp[10];
-      // Loop through directory...
-      for (int i = 0; i < 16; i++)
-      {
-        // Save the file's attribute as a hex value into a string
-        sprintf(temp, "0x%02X", dir[i].DIR_Attr);
-
-        // Only print files with attributes "0x01", "0x10", "0x20"
-        if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20")))
-        {
-          printf("%s\n",dir[i].DIR_Name);
-        }
-      }
-    }
     else if (!(strcmp(token[0], "stat")))
     {
-      // Save the input so we can open the file later if we find it
-      char saved_input[strlen(token[1])];
-      strcpy(saved_input, token[1]);
-
-      // Make two temp strings, format them similarly, and compare to find file
-      // Make temp string with everything up to file extention
-      char *trimmed_input = strtok(token[1], ".");
-      // Make another string with the length of the input (+1 for '\0')
-      char trimmed_file[strlen(trimmed_input) + 1];
-
-      // Loop through directory
-      for(int i = 0; i < 16; i++)
-      {
-        // Format the dir file name to lowecase so we can compare
-        for(int j = 0; j < strlen(trimmed_input); j++)
-        {
-          // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
-          trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
-        }
-        trimmed_file[strlen(trimmed_input)] = '\0';
-        
-        if(!strcmp(trimmed_input, trimmed_file))
-        {
-          printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
-        }
-      }
+      stat(token);
     }
     else if (!(strcmp(token[0], "get")))
     {
-      int num = 0;
-      // Save the input so we can open the file later if we find it
-      char saved_input[strlen(token[1])];
-      strcpy(saved_input, token[1]);
-
-      // Make two temp strings, format them similarly, and compare to find file
-      // Make temp string with everything up to file extention
-      char *trimmed_input = strtok(token[1], ".");
-      // Make another string with the length of the input (+1 for '\0')
-      char trimmed_file[strlen(trimmed_input) + 1];
-
-      // Loop through directory
-      for(int i = 0; i < 16; i++)
-      {
-        // format the dir file name to lowecase so we can compare
-        for(int j = 0; j < strlen(trimmed_input); j++)
-        {
-          // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
-          trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
-        }
-        trimmed_file[strlen(trimmed_input)] = '\0';
-        
-        if(!strcmp(trimmed_input, trimmed_file))
-        {
-          printf("File found!\n");
-
-          // NOT WORKING RIGHT NOW
-          // int offset;
-          // uint8_t buffer[512];
-          // printf("low clus = %d\n", (int)dir[num].ClusterLow);
-          // offset = LBAToOffset(17);
-          // printf("Offset = %d\n", offset);
-          // offset = LBAToOffset((int)dir[num].ClusterLow);
-          // printf("Offset = %d\n", offset);
-
-          // fseek(fp, offset, SEEK_SET);
-          // FILE *ofp = fopen(saved_input, "w");
-
-          // fread(&buffer, 512, 1, fp);
-          // fwrite(&buffer, dir[0].size, 1, ofp);
-
-          // fclose(ofp);
-        }
-      }
+      get(token);
+    }
+    else if (!(strcmp(token[0], "cd")))
+    {
+      cd();
+    }
+    else if (!(strcmp(token[0], "ls")))
+    {
+      ls();
+    }
+    else if (!(strcmp(token[0], "del")))
+    {
+      del();
+    }
+    else if (!(strcmp(token[0], "undel")))
+    {
+      undel();
     }
     else
     {
@@ -305,6 +210,70 @@ int main()
 
   fclose(fp);
   return 0;
+}
+
+// I RIPPED this shit off the internet so we're gonan eventually have to make our own
+void int_to_hex(int num)
+{
+  char reversedDigits[100];
+	int i = 0;
+	
+	while(num > 0) {
+		
+		int remain = num % 16;
+		
+		if(remain < 10)
+			reversedDigits[i] = '0' + remain;
+		else
+			reversedDigits[i] = 'A' + (remain - 10);
+		
+		num = num / 16;
+		i++;
+	}
+	
+  printf("0x");
+	while(i--) {
+		printf("%c", reversedDigits[i]);
+	}
+}
+
+void open(char **token)
+{
+  if(fp != NULL)
+  {
+    printf("Error: File system image already open.\n");
+  }
+  else if (fp = fopen(token[1], "r")) 
+  {
+    printf("Opening file.\n");
+  }
+  else
+  {
+    printf("Error: File system image not found.\n");
+  }
+
+  // Fseek to root dir, now that they've opened the image
+  fseek(fp, 0x100400, SEEK_SET);
+  fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+
+  for (int i = 0; i < 16; i++)
+  {
+    // NULL terminate the string to remove the garbage
+    dir[i].DIR_Name[12] = '\0';
+  }
+}
+
+void close_f()
+{
+  if(fp == NULL)
+  {
+    printf("Error: File system not open.\n");
+  }
+  else
+  {
+    fclose(fp);
+    fp = NULL;
+  }
 }
 
 void info()
@@ -340,55 +309,138 @@ void info()
   printf("\n");
 }
 
-// I RIPPED this shit off the internet so we're gonan eventually have to make our own
-void int_to_hex(int num)
+void stat(char **token)
 {
-  char reversedDigits[100];
-	int i = 0;
-	
-	while(num > 0) {
-		
-		int remain = num % 16;
-		
-		if(remain < 10)
-			reversedDigits[i] = '0' + remain;
-		else
-			reversedDigits[i] = 'A' + (remain - 10);
-		
-		num = num / 16;
-		i++;
-	}
-	
-  printf("0x");
-	while(i--) {
-		printf("%c", reversedDigits[i]);
-	}
+  // Save the input so we can open the file later if we find it
+  char saved_input[strlen(token[1])];
+  strcpy(saved_input, token[1]);
+
+  // Make two temp strings, format them similarly, and compare to find file
+  // Make temp string with everything up to file extention
+  char *trimmed_input = strtok(token[1], ".");
+  // Make another string with the length of the input (+1 for '\0')
+  char trimmed_file[strlen(trimmed_input) + 1];
+
+  // Loop through directory
+  for(int i = 0; i < 16; i++)
+  {
+    // Format the dir file name to lowecase so we can compare
+    for(int j = 0; j < strlen(trimmed_input); j++)
+    {
+      // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
+      trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
+    }
+    trimmed_file[strlen(trimmed_input)] = '\0';
+    
+    if(!strcmp(trimmed_input, trimmed_file))
+    {
+      printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
+      return;
+    }
+  }
+  printf("Error: File not found.\n");
 }
 
+void get(char **token)
+{
+  int num = 0;
+  // Save the input so we can open the file later if we find it
+  char saved_input[strlen(token[1])];
+  strcpy(saved_input, token[1]);
 
-  // //get 
-  // int offset = LBAToOffset(17);
-  // printf("Offset = %d\n", offset);
-  // fseek(fp, offset, SEEK_SET);
+  // Make two temp strings, format them similarly, and compare to find file
+  // Make temp string with everything up to file extention
+  char *trimmed_input = strtok(token[1], ".");
+  // Make another string with the length of the input (+1 for '\0')
+  char trimmed_file[strlen(trimmed_input) + 1];
 
-  // FILE *ofp = fopen("bar.txt", "w");
+  // Loop through directory
+  for(int i = 0; i < 16; i++)
+  {
+    // format the dir file name to lowecase so we can compare
+    for(int j = 0; j < strlen(trimmed_input); j++)
+    {
+      // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
+      trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
+    }
+    trimmed_file[strlen(trimmed_input)] = '\0';
+    
+    if(!strcmp(trimmed_input, trimmed_file))
+    {
+      printf("File found!\n");
+      return;
 
-  // uint8_t buffer[512];
+      // NOT WORKING RIGHT NOW
+      // int offset;
+      // uint8_t buffer[512];
+      // printf("low clus = %d\n", (int)dir[num].ClusterLow);
+      // offset = LBAToOffset(17);
+      // printf("Offset = %d\n", offset);
+      // offset = LBAToOffset((int)dir[num].ClusterLow);
+      // printf("Offset = %d\n", offset);
 
-  // fread(&buffer, 512, 1, fp);
-  // fwrite(&buffer, dir[0].size, 1, ofp);
+      // fseek(fp, offset, SEEK_SET);
+      // FILE *ofp = fopen(saved_input, "w");
 
-  // //cd 
-  // // anytime you cd if lowcluster num is 0, set to 2
-  // offset = LBAToOffset(6099);
+      // fread(&buffer, 512, 1, fp);
+      // fwrite(&buffer, dir[0].size, 1, ofp);
+
+      // fclose(ofp);
+    }
+  }
+  printf("Error: File not found.\n");
+}
+
+void cd()
+{
+  // int offset = LBAToOffset(6099);
   // fseek(fp, offset, SEEK_SET);
   // fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-  // dir[0].ClusterLow = 2;
+}
 
-  // for (int i = 0; i < 16; i++)
-  // {
-  //   printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
-  // }
-  
-  //read loop until nextLB = -1
-  // fclose(ofp);
+void ls()
+{
+  char temp[10];
+  // Loop through directory...
+  for (int i = 0; i < 16; i++)
+  {
+    // Save the file's attribute as a hex value into a string
+    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+
+    // Only print files with attributes "0x01", "0x10", "0x20"
+    if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20")))
+    {
+      printf("%s\n",dir[i].DIR_Name);
+    }
+  }
+}
+
+void del(){}
+void undel(){}
+
+//get 
+// int offset = LBAToOffset(17);
+// printf("Offset = %d\n", offset);
+// fseek(fp, offset, SEEK_SET);
+
+// FILE *ofp = fopen("bar.txt", "w");
+
+// uint8_t buffer[512];
+
+// fread(&buffer, 512, 1, fp);
+// fwrite(&buffer, dir[0].size, 1, ofp);
+
+//cd 
+// anytime you cd if lowcluster num is 0, set to 2
+// offset = LBAToOffset(6099);
+// fseek(fp, offset, SEEK_SET);
+// fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+// dir[0].ClusterLow = 2;
+
+// for (int i = 0; i < 16; i++)
+// {
+//   printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
+// }
+
+//read loop until nextLB = -1
+// fclose(ofp);
