@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <ctype.h>
 
-#define MAX_NUM_ARGUMENTS 3
+#define MAX_NUM_ARGUMENTS 4
 
 #define WHITESPACE " \t\n"      // We want to split our command line up into tokens
                                 // so we need to define what delimits our tokens.
@@ -63,8 +63,8 @@ unsigned NextLB(int sector)
 {
   int FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
   unsigned value;
-  // fseek(file, FATAddress, SEEK_SET);
-  // fread(&value, 2, 1, file);
+  fseek(fp, FATAddress, SEEK_SET);
+  fread(&value, 2, 1, fp);
   return value;
 }
 
@@ -73,12 +73,14 @@ void grab_info();
 void open(char **token);
 void close_f();
 void print_info();
-void stat(char **token);
-void get(char **token);
-void cd();
+void cd(char **token);
 void ls();
+void read_f(char **token);
 void del();
 void undel();
+
+int find_file(char **token);
+int find_folder(char **token);
 
 int main()
 {
@@ -112,7 +114,7 @@ int main()
     // the correct amount at the end
     char *working_root = working_str;
 
-    // Tokenize the input stringswith whitespace used as the delimiter
+    // Tokenize the input strings with whitespace used as the delimiter
     while ( ( (arg_ptr = strsep(&working_str, WHITESPACE ) ) != NULL) && 
               (token_count<MAX_NUM_ARGUMENTS))
     {
@@ -142,7 +144,6 @@ int main()
     {
       free(working_root);
       fclose(fp);
-      exit(0);
       return 0;
     }
     // Used for debugging, Just type "o", hard coded val so we can debug faster
@@ -180,19 +181,52 @@ int main()
     }
     else if (!(strcmp(token[0], "stat")))
     {
-      stat(token);
+      int i = find_file(token);
+      if(i != -1)
+      {
+        printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
+        continue;
+      }
     }
     else if (!(strcmp(token[0], "get")))
     {
-      get(token);
+      char saved_input[strlen(token[1])];
+      strcpy(saved_input, token[1]);
+
+      int i = find_file(token);
+      if(i != -1)
+      {
+        uint8_t buffer[512];
+      
+        int offset = LBAToOffset((int)dir[i].ClusterLow);
+
+        fseek(fp, offset, SEEK_SET);
+        FILE *ofp = fopen(saved_input, "w");
+
+        fread(&buffer, 512, 1, fp);
+        fwrite(&buffer, dir[0].size, 1, ofp);
+
+        fclose(ofp);
+        continue;
+      }
+      printf("Error: File not found.\n");
     }
     else if (!(strcmp(token[0], "cd")))
     {
-      cd();
+      int i = find_folder(token);
+      if(i != -1)
+      {
+        continue;
+      }
+      printf("Error: Folder not found.\n");
     }
     else if (!(strcmp(token[0], "ls")))
     {
       ls();
+    }
+    else if (!(strcmp(token[0], "read")))
+    {
+      read_f(token);
     }
     else if (!(strcmp(token[0], "del")))
     {
@@ -214,7 +248,6 @@ int main()
   return 0;
 }
 
-// I RIPPED this shit off the internet so we're gonan eventually have to make our own
 void int_to_hex(int num)
 {
   char reversedDigits[100];
@@ -315,83 +348,7 @@ void print_info()
   printf("\n");
 }
 
-void stat(char **token)
-{
-  // Save the input so we can open the file later if we find it
-  char saved_input[strlen(token[1])];
-  strcpy(saved_input, token[1]);
-
-  // Make two temp strings, format them similarly, and compare to find file
-  // Make temp string with everything up to file extention
-  char *trimmed_input = strtok(token[1], ".");
-  // Make another string with the length of the input (+1 for '\0')
-  char trimmed_file[strlen(trimmed_input) + 1];
-
-  // Loop through directory
-  for(int i = 0; i < 16; i++)
-  {
-    // Format the dir file name to lowecase so we can compare
-    for(int j = 0; j < strlen(trimmed_input); j++)
-    {
-      // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
-      trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
-    }
-    trimmed_file[strlen(trimmed_input)] = '\0';
-    
-    if(!strcmp(trimmed_input, trimmed_file))
-    {
-      printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
-      return;
-    }
-  }
-  printf("Error: File not found.\n");
-}
-
-void get(char **token)
-{
-  int num = 0;
-  // Save the input so we can open the file later if we find it
-  char saved_input[strlen(token[1])];
-  strcpy(saved_input, token[1]);
-
-  // Make two temp strings, format them similarly, and compare to find file
-  // Make temp string with everything up to file extention
-  char *trimmed_input = strtok(token[1], ".");
-  // Make another string with the length of the input (+1 for '\0')
-  char trimmed_file[strlen(trimmed_input) + 1];
-
-  // Loop through directory
-  for(int i = 0; i < 16; i++)
-  {
-    // format the dir file name to lowecase so we can compare
-    for(int j = 0; j < strlen(trimmed_input); j++)
-    {
-      // sprintf(dir[i].DIR_Name[j], "%c", tolower(dir[i].DIR_Name[j]));
-      trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
-    }
-    trimmed_file[strlen(trimmed_input)] = '\0';
-    
-    if(!strcmp(trimmed_input, trimmed_file))
-    {
-      // NOT WORKING RIGHT NOW
-      uint8_t buffer[512];
-      
-      int offset = LBAToOffset((int)dir[i].ClusterLow);
-
-      fseek(fp, offset, SEEK_SET);
-      FILE *ofp = fopen(saved_input, "w");
-
-      fread(&buffer, 512, 1, fp);
-      fwrite(&buffer, dir[0].size, 1, ofp);
-
-      fclose(ofp);
-      return;
-    }
-  }
-  printf("Error: File not found.\n");
-}
-
-void cd()
+void cd(char **token)
 {
   // int offset = LBAToOffset(6099);
   // fseek(fp, offset, SEEK_SET);
@@ -410,10 +367,78 @@ void ls()
     // Only print files with attributes "0x01", "0x10", "0x20"
     if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20")))
     {
-      printf("%s\n",dir[i].DIR_Name);
+      printf("%s\n", dir[i].DIR_Name);
     }
   }
 }
+
+void read_f(char **token)
+{
+  
+}
+
+int find_file(char **token)
+{
+  // Make two temp strings, format them similarly, and compare to find file
+  // Make temp string with everything up to file extention
+  char *trimmed_input = strtok(token[1], ".");
+  // Make another string with the length of the input (+1 for '\0')
+  char trimmed_file[strlen(trimmed_input) + 1];
+
+  char temp[10];
+  // Loop through directory
+  for(int i = 0; i < 16; i++)
+  {
+    // Format the dir file name to lowecase so we can compare
+    for(int j = 0; j < strlen(trimmed_input); j++)
+    {
+      trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
+    }
+    trimmed_file[strlen(trimmed_input)] = '\0';
+    
+    // Save the file's attribute as a hex value into a string
+    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+
+    // If the it's a file (0x01 and 0x20) and the file names match 
+    if(!strcmp(trimmed_input, trimmed_file) && (!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x20"))))
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int find_folder(char **token)
+{
+  // Make two temp strings, format them similarly, and compare to find folder
+  // Make temp string with everything up to file extention
+  char *trimmed_input = strtok(token[1], "/");
+  // Make another string with the length of the input (+1 for '\0')
+  char trimmed_folder[strlen(trimmed_input) + 1];
+
+  char temp[10];
+  // Loop through directory
+  for(int i = 0; i < 16; i++)
+  {
+    // Format the dir folder name to lowecase so we can compare
+    for(int j = 0; j < strlen(trimmed_input); j++)
+    {
+      trimmed_folder[j] = tolower(dir[i].DIR_Name[j]);
+    }
+    trimmed_folder[strlen(trimmed_input)] = '\0';
+    
+    // Save the folder's attribute as a hex value into a string
+    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+
+    // If the it's a folder (0x10 and the folder names match 
+    if(!strcmp(trimmed_input, trimmed_folder) && !(strcmp(temp, "0x10")))
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
 
 void del(){}
 void undel(){}
