@@ -47,25 +47,28 @@ struct node
 };
 
 // Main Functions
-void open(char **token);
-void close_f();
-void print_info();
-void stat(char **token);
-void get(char **token);
-void cd(char **token);
-void ls();
-void del();
-void undel();
+void open(char **);       // Function opens fat32 image file (open <filename>)
+void close_f();           // Function closes fat32 image file (close)
+void print_info();        // Function prints info about the loaded image file (info)
+void stat(char **);       // Function prints info about specific entry in directory 
+                          // (stat <filename> or <foldername>)
+void get(char **);        // Function gets file from fat32 image file and saves it
+                          // in users current directory (get <filename>)
+void cd(char **);         // Function allows cd command in fat32 image file (cd <foldername>)
+void ls();                // Function allows ls command in fat32 image file (ls)
+void read_f(char **);     // Function reads entry and prints to screen 
+                          // (read <filename> <starting_position> <bytes_to_read>)
+void del(char **);        // Function deletes file in fat32 image file (del <filename>)
+void undel();             // Function undeletes *last* file delted in fat32 image file (undel)
 
 // Utility Functions
-void load_img();
-void load_dir();
-void read_f(char **token);
-int find(char **token);
-int find_folder(char *token);
-void int_to_hex(int num);
-int LBAToOffset(int32_t sector);
-int16_t NextLB(int32_t sector);
+void load_img();          // Function loads data of fat32 image 
+void load_dir();          // Function formats directory names and hides previously deleted files
+int find(char **);        // Function finds file/folder in directory (returns location in directory)
+int find_folder(char *);  // Function finds folder in directory (returns location in directory)
+void int_to_hex(int);     // Function takes integer and prints hex value to screen
+int LBAToOffset(int32_t); // Function returns the value of the address in that block of data
+int16_t NextLB(int32_t);  // Function returns the value for next block address of file
 
 Node *head = NULL;
 
@@ -118,6 +121,7 @@ int main()
         token_count++;
     }
 
+    // If user types in nothing
     if (token[0] == NULL)
     {
       continue;
@@ -126,20 +130,12 @@ int main()
     if (!(strcmp(token[0], "quit")) || !(strcmp(token[0], "q")))
     {
       free(working_root);
-      fclose(fp);
+      // Check if file has been opened
+      if(fp != NULL)
+      {
+        fclose(fp);
+      }
       return 0;
-    }
-    // Used for debugging, Just type "o", hard coded val so we can debug faster
-    else if (!(strcmp(token[0], "o")))
-    {
-      fp = fopen("fat32.img", "r");
-
-      // Fseek to root dir, now that they've opened the image
-      fseek(fp, 0x100400, SEEK_SET);
-      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-
-      load_img();
-      load_dir();
     }
     // Any command issued after a close, except for open shall result in "Error: File system image must be opened first"
     else if((strcmp(token[0], "open")) && fp == NULL)
@@ -200,6 +196,12 @@ int main()
 
 void open(char **token)
 {
+  if(token[1] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
+
   if(fp != NULL)
   {
     printf("Error: File system image already open.\n");
@@ -214,12 +216,11 @@ void open(char **token)
   }
 
   load_img();
-
   // Fseek to root dir, now that they've opened the image
-  fseek(fp, 0x100400, SEEK_SET);
+  fseek(fp, (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec) + (BPB_RsvdSecCnt * BPB_BytsPerSec), SEEK_SET);
   fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-  load_dir();
 
+  load_dir();
 }
 
 void close_f()
@@ -257,6 +258,12 @@ void print_info()
 
 void stat(char **token)
 {
+  if(token[1] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
+
   int i = find(token);
   if(i != -1)
   {
@@ -268,6 +275,12 @@ void stat(char **token)
 
 void get(char **token)
 {
+  if(token[1] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
+
   // Save input becuase find_file messes with token
   char saved_input[strlen(token[1])];
   strcpy(saved_input, token[1]);
@@ -283,18 +296,23 @@ void get(char **token)
 
     int cluster = dir[i].ClusterLow;
     int size = dir[i].size;
+    // Loop and write a sector at a time
     while(size >= BPB_BytsPerSec)
     {
       fread(&buffer, BPB_BytsPerSec, 1, fp);
       fwrite(&buffer, BPB_BytsPerSec, 1, ofp);
+      // NextLB returns -1 if file doesn't have a next block
       cluster = NextLB(cluster);
+      // Only seek if file has a next block
       if(cluster != -1)
       {
         offset = LBAToOffset(cluster);
         fseek(fp, offset, SEEK_SET);
       }
+
       size -= BPB_BytsPerSec;
     }
+    // Read remaining data 
     if(size > 0)
     {
       fread(&buffer, size, 1, fp);
@@ -309,7 +327,13 @@ void get(char **token)
 
 void cd(char **token)
 {
-  // Tokenize inputted folderpath
+  if(token[1] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
+
+  // Tokenize inputted folderpath and save into a linked list
   char *array[100];
   int token_count = 0;
 
@@ -356,6 +380,7 @@ void cd(char **token)
       break;
     }
 
+    // If folderpath exists, seek to it
     offset = LBAToOffset(dir[i].ClusterLow);
     fseek(fp, offset, SEEK_SET);
     fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
@@ -363,7 +388,8 @@ void cd(char **token)
 
     temp = temp->next;
   }
-
+  
+  // Free linked list
   temp = head;
   while (head != NULL)
   {
@@ -391,14 +417,72 @@ void ls()
   }
 }
 
-void del(char **token)
+void read_f(char **token)
 {
+  if(token[1] == NULL || token[2] == NULL || token[3] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
+  
+  int position = atoi(token[2]);
+  int num_bytes = atoi(token[3]);
+
   int i = find(token);
   if(i != -1)
   {
+    uint8_t buffer[BPB_BytsPerSec];
+
+    int offset = LBAToOffset(dir[i].ClusterLow);
+    fseek(fp, offset + position, SEEK_SET);
+
+    int cluster = dir[i].ClusterLow;
+    int size = num_bytes;
+    // Loop and write a sector at a time
+    while(size >= BPB_BytsPerSec)
+    {
+      fread(&buffer, BPB_BytsPerSec, 1, fp);
+      printf("%s", buffer);
+      // NextLB returns -1 if file doesn't have a next block
+      cluster = NextLB(cluster);
+      // Only seek if file has a next block
+      if(cluster != -1)
+      {
+        offset = LBAToOffset(cluster);
+        fseek(fp, offset, SEEK_SET);
+      }
+
+      size -= BPB_BytsPerSec;
+    }
+    // Read remaining data 
+    if(size > 0)
+    {
+      fread(&buffer, size, 1, fp);
+      printf("%s", buffer);
+    }
+    printf("\n");
+    return;
+  }
+  printf("Error: File not found.\n");
+}
+
+void del(char **token)
+{
+  if(token[1] == NULL)
+  {
+    printf("Error: Not enough arguments.\n");
+    return;
+  }
+
+  int i = find(token);
+  if(i != -1)
+  {
+    // Save file data so we can undelete later
     last_deleted_file_loc = i;
     last_deleted_file = dir[i].DIR_Name[0];
+    // 0xe5 means file is delted in FAT32 
     dir[i].DIR_Name[0] = 0xe5;
+    // Hide the file
     dir[i].DIR_Attr = 4;
     return;
   }
@@ -409,7 +493,9 @@ void undel()
 {
   if(last_deleted_file != -1 || last_deleted_file_loc != -1)
   {
+    // Set attribute to read only (unhide)
     dir[last_deleted_file_loc].DIR_Attr = 1;
+    // Reset letter
     dir[last_deleted_file_loc].DIR_Name[0] = last_deleted_file;
     return;
   }
@@ -418,6 +504,7 @@ void undel()
 
 void load_img()
 {
+  // Hardcoded values of data can be found in fatspec
   fseek(fp, 11, SEEK_SET);
   fread(&BPB_BytsPerSec, 2, 1, fp);
   fseek(fp, 13, SEEK_SET);
@@ -444,51 +531,6 @@ void load_dir()
       dir[i].DIR_Attr = 4;
     }
   }
-}
-
-void read_f(char **token)
-{
-  if(token[1] == NULL || token[2] == NULL || token[3] == NULL)
-  {
-    printf("Error: Not enough arguments.\n");
-    return;
-  }
-  
-  int position = atoi(token[2]);
-  int num_bytes = atoi(token[3]);
-
-  int i = find(token);
-  if(i != -1)
-  {
-    uint8_t buffer[BPB_BytsPerSec];
-
-    int offset = LBAToOffset(dir[i].ClusterLow);
-    fseek(fp, offset + position, SEEK_SET);
-
-    int cluster = dir[i].ClusterLow;
-    int size = num_bytes;
-    while(size >= BPB_BytsPerSec)
-    {
-      fread(&buffer, BPB_BytsPerSec, 1, fp);
-      printf("%s", buffer);
-      cluster = NextLB(cluster);
-      if(cluster != -1)
-      {
-        offset = LBAToOffset(cluster);
-        fseek(fp, offset, SEEK_SET);
-      }
-
-      size -= BPB_BytsPerSec;
-    }
-    if(size > 0)
-    {
-      fread(&buffer, size, 1, fp);
-      printf("%s", buffer);
-    }
-    printf("\n");
-    return;
-  }
-  printf("Error: File not found.\n");
 }
 
 int find(char **token)
@@ -577,9 +619,6 @@ void int_to_hex(int num)
 	}
 }
 
-/*
-  LBAToOffset function returns the value of the address in that block of data
-*/
 int LBAToOffset(int32_t sector)
 {
   //handles root dir quirk
@@ -590,9 +629,6 @@ int LBAToOffset(int32_t sector)
   return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec);
 }
 
-/*
-  NextLB returns unsigned interger for next block address of file
-*/
 int16_t NextLB(int32_t sector)
 {
   int FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
@@ -601,30 +637,3 @@ int16_t NextLB(int32_t sector)
   fread(&value, 2, 1, fp);
   return value;
 }
-
-//get 
-// int offset = LBAToOffset(17);
-// printf("Offset = %d\n", offset);
-// fseek(fp, offset, SEEK_SET);
-
-// FILE *ofp = fopen("bar.txt", "w");
-
-// uint8_t buffer[512];
-
-// fread(&buffer, 512, 1, fp);
-// fwrite(&buffer, dir[0].size, 1, ofp);
-
-//cd 
-// anytime you cd if lowcluster num is 0, set to 2
-// offset = LBAToOffset(6099);
-// fseek(fp, offset, SEEK_SET);
-// fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-// dir[0].ClusterLow = 2;
-
-// for (int i = 0; i < 16; i++)
-// {
-//   printf("DIR[%d] = %s LOWCLUSTERNUM = %d\n", i, dir[i].DIR_Name, dir[i].ClusterLow);
-// }
-
-//read loop until nextLB = -1
-// fclose(ofp);
