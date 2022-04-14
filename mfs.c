@@ -39,13 +39,20 @@ struct __attribute__((__packed__)) DirectoryEntry
   uint32_t size;
 };
 
+typedef struct node Node;
+struct node 
+{
+  char *folder_name;
+  Node* next;
+};
+
 // Main Functions
 void open(char **token);
 void close_f();
 void print_info();
 void stat(char **token);
 void get(char **token);
-void cd(char *token);
+void cd(char **token);
 void ls();
 void del();
 void undel();
@@ -55,9 +62,12 @@ void load_img();
 void load_dir();
 void read_f(char **token);
 int find(char **token);
+int find_folder(char *token);
 void int_to_hex(int num);
 int LBAToOffset(int32_t sector);
 int16_t NextLB(int32_t sector);
+
+Node *head = NULL;
 
 struct DirectoryEntry dir[16];
 FILE *fp = NULL;
@@ -158,7 +168,7 @@ int main()
     }
     else if (!(strcmp(token[0], "cd")))
     {
-      cd(token[1]);
+      cd(token);
     }
     else if (!(strcmp(token[0], "ls")))
     {
@@ -265,15 +275,31 @@ void get(char **token)
   int i = find(token);
   if(i != -1)
   {
-    int offset = LBAToOffset(dir[i].ClusterLow);
-
     FILE *ofp = fopen(saved_input, "w");
+    uint8_t buffer[BPB_BytsPerSec];
 
-    uint8_t buffer[dir[i].size];
-
+    int offset = LBAToOffset(dir[i].ClusterLow);
     fseek(fp, offset, SEEK_SET);
-    fread(&buffer, dir[i].size + 1, 1, fp);
-    fwrite(&buffer, dir[i].size + 1, 1, ofp);
+
+    int cluster = dir[i].ClusterLow;
+    int size = dir[i].size;
+    while(size >= BPB_BytsPerSec)
+    {
+      fread(&buffer, BPB_BytsPerSec, 1, fp);
+      fwrite(&buffer, BPB_BytsPerSec, 1, ofp);
+      cluster = NextLB(cluster);
+      if(cluster != -1)
+      {
+        offset = LBAToOffset(cluster);
+        fseek(fp, offset, SEEK_SET);
+      }
+      size -= BPB_BytsPerSec;
+    }
+    if(size > 0)
+    {
+      fread(&buffer, size, 1, fp);
+      fwrite(&buffer, size, 1, ofp);
+    }
 
     fclose(ofp);
     return;
@@ -281,61 +307,70 @@ void get(char **token)
   printf("Error: File not found.\n");
 }
 
-void cd(char *token)
+void cd(char **token)
 {
-  // ... TO DO 
+  // Tokenize inputted folderpath
   char *array[100];
   int token_count = 0;
 
-  array[token_count] = strtok(token, "/");
+  array[token_count] = strtok(token[1], "/");
 
   while(array[token_count] != NULL)
   {
+    // Make a new node with each folder name
+    Node *new_node = (Node *)malloc(sizeof(Node));
+    new_node->folder_name = malloc(sizeof(char) * sizeof(strlen(array[token_count])));
+    strcpy(new_node->folder_name, array[token_count]);
+    new_node->next = NULL;
+
+    // If linked list doesn't exist yet, set head to new_node
+    if(head == NULL)
+    {
+      head = new_node;
+    }
+    // Add to end of list
+    else
+    {
+      Node *temp = head;
+      while (temp->next != NULL)
+      {
+        temp = temp->next;
+      }
+      temp->next = new_node;
+    }
+
     token_count++;
     array[token_count] = strtok(NULL, "/");
   }
 
-  char temp[10];
-  char dir_lower[16][11] = {0};
-  int folder_loc[16] = {0};
-  int folder_count = 0;
-
-  for(int i = 0; i < 16; i++)
+  int i;
+  int offset;
+  Node *temp = head;
+  while(temp)
   {
-    // Save the file's attribute as a hex value into a string
-    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+    i = find_folder(temp->folder_name);
 
-    if(!(strcmp(temp, "0x10")))
+    if(i == -1)
     {
-      folder_loc[folder_count++] = i;
-      for(int j = 0; j < 11; j++)
-      {
-        dir_lower[i][j] = tolower(dir[i].DIR_Name[j]);
-      }
-      // printf("%s\n", dir_lower[i]);
+      printf("Error: Could not find folder.\n");
+      break;
     }
+
+    offset = LBAToOffset(dir[i].ClusterLow);
+    fseek(fp, offset, SEEK_SET);
+    fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+    load_dir();
+
+    temp = temp->next;
   }
 
-  for(int k = 0; k < 16; k++)
+  temp = head;
+  while (head != NULL)
   {
-    // printf("%d\n", folder_loc[k]);
-  }
-
-  for(int j = 0; j < folder_count; j++)
-  {
-    if(!strcmp("..", array[j]))
-    {
-      printf("BACKWARDS\n");
-    }
-    else
-    {
-      printf("FORWARDS\n");
-      int offset = LBAToOffset(dir[folder_loc[j]].ClusterLow);
-      printf("%d\n", offset);
-      fseek(fp, offset, SEEK_SET);
-      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-      load_dir();
-    }
+    temp = head;
+    head = head->next;
+    free(temp->folder_name);
+    free(temp);
   }
 }
 
@@ -349,10 +384,10 @@ void ls()
     sprintf(temp, "0x%02X", dir[i].DIR_Attr);
 
     // Only print files with attributes "0x01", "0x10", "0x20"
-    if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20")))
+    if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20") && dir[i].DIR_Name[0] != 229) && dir[i].DIR_Name[0] != -27)
     {
       printf("%s\n", dir[i].DIR_Name);
-    }
+    } 
   }
 }
 
@@ -363,7 +398,7 @@ void del(char **token)
   {
     last_deleted_file_loc = i;
     last_deleted_file = dir[i].DIR_Name[0];
-    dir[i].DIR_Name[0] = 229;
+    dir[i].DIR_Name[0] = 0xe5;
     dir[i].DIR_Attr = 4;
     return;
   }
@@ -402,6 +437,12 @@ void load_dir()
   {
     // NULL terminate the string to remove the garbage
     dir[i].DIR_Name[12] = '\0';
+
+    // If file is deleted, hide it
+    if(dir[i].DIR_Name[0] == -27)
+    {
+      dir[i].DIR_Attr = 4;
+    }
   }
 }
 
@@ -413,21 +454,38 @@ void read_f(char **token)
     return;
   }
   
-  char saved_input[strlen(token[1])];
-  strcpy(saved_input, token[1]);
   int position = atoi(token[2]);
   int num_bytes = atoi(token[3]);
 
   int i = find(token);
   if(i != -1)
   {
-    int offset = LBAToOffset(dir[i].ClusterLow);
-    int num_sectors = dir[i].size / 512;
-    uint8_t buffer[num_bytes];
-    fseek(fp, offset + position, SEEK_SET);
-    fread(&buffer, num_bytes + 1, 1, fp);
+    uint8_t buffer[BPB_BytsPerSec];
 
-    printf("%s\n", buffer);
+    int offset = LBAToOffset(dir[i].ClusterLow);
+    fseek(fp, offset + position, SEEK_SET);
+
+    int cluster = dir[i].ClusterLow;
+    int size = num_bytes;
+    while(size >= BPB_BytsPerSec)
+    {
+      fread(&buffer, BPB_BytsPerSec, 1, fp);
+      printf("%s", buffer);
+      cluster = NextLB(cluster);
+      if(cluster != -1)
+      {
+        offset = LBAToOffset(cluster);
+        fseek(fp, offset, SEEK_SET);
+      }
+
+      size -= BPB_BytsPerSec;
+    }
+    if(size > 0)
+    {
+      fread(&buffer, size, 1, fp);
+      printf("%s", buffer);
+    }
+    printf("\n");
     return;
   }
   printf("Error: File not found.\n");
@@ -457,6 +515,37 @@ int find(char **token)
 
     // If the it's a file (0x01 and 0x20) and the file names match 
     if(!strcmp(trimmed_input, trimmed_file) && (!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20"))))
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int find_folder(char *token)
+{
+  // Make two temp strings, format them similarly, and compare to find folder
+  // Make temp string with everything up to file extention
+  char *trimmed_input = strtok(token, "/");
+  // Make another string with the length of the input (+1 for '\0')
+  char trimmed_folder[strlen(trimmed_input) + 1];
+
+  char temp[10];
+  // Loop through directory
+  for(int i = 0; i < 16; i++)
+  {
+    // Format the dir folder name to lowecase so we can compare
+    for(int j = 0; j < strlen(trimmed_input); j++)
+    {
+      trimmed_folder[j] = tolower(dir[i].DIR_Name[j]);
+    }
+    trimmed_folder[strlen(trimmed_input)] = '\0';
+    
+    // Save the folder's attribute as a hex value into a string
+    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+
+    // If the it's a folder (0x10 and the folder names match 
+    if(!strcmp(trimmed_input, trimmed_folder) && !(strcmp(temp, "0x10")))
     {
       return i;
     }
