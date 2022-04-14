@@ -528,7 +528,7 @@ int find_folder(char *token)
   // Make temp string with everything up to file extention
   char *trimmed_input = strtok(token, "/");
   // Make another string with the length of the input (+1 for '\0')
-  char trimmed_folder[strlen(trimmed_input) + 1];
+  char trimmed_folder[strlen(trimmed_input)];
 
   char temp[10];
   // Loop through directory
