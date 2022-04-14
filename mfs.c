@@ -517,7 +517,6 @@ void load_img()
   fread(&BPB_FATz32, 4, 1, fp);
 }
 
-// Function loads in global data of .img file
 void load_dir()
 {
   for (int i = 0; i < 16; i++)
