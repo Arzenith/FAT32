@@ -42,6 +42,8 @@ struct __attribute__((__packed__)) DirectoryEntry
 struct DirectoryEntry dir[16];
 
 FILE *fp = NULL;
+int last_deleted_file = -1;
+int last_deleted_file_loc = -1;
 
 /*
   LBAToOffset function returns the value of the address in that block of data
@@ -72,7 +74,7 @@ void int_to_hex(int num);
 void open(char **token);
 void close_f();
 void print_info();
-void cd(char **token);
+void cd(char *token);
 void ls();
 void read_f(char **token);
 void del();
@@ -80,9 +82,9 @@ void undel();
 void load_dir();
 void load_img();
 void get(char **token);
+void stat(char **token);
 
-int find_file(char **token);
-int find_folder(char **token);
+int find(char **token);
 
 int main()
 {
@@ -131,18 +133,18 @@ int main()
     // Now print the tokenized input as a debug check
     // \TODO Remove this code and replace with your FAT32 functionality
 
-    int token_index  = 0;
-    for( token_index = 0; token_index < token_count; token_index ++ ) 
-    {
-      printf("token[%d] = %s\n", token_index, token[token_index] );  
-    }
+    // int token_index  = 0;
+    // for( token_index = 0; token_index < token_count; token_index ++ ) 
+    // {
+    //   printf("token[%d] = %s\n", token_index, token[token_index] );  
+    // }
 
     if (token[0] == NULL)
     {
       continue;
     }
 
-    if (!(strcmp(token[0], "quit")) || !(strcmp(token[0], "exit")))
+    if (!(strcmp(token[0], "quit")) || !(strcmp(token[0], "q")))
     {
       free(working_root);
       fclose(fp);
@@ -179,14 +181,7 @@ int main()
     }
     else if (!(strcmp(token[0], "stat")))
     {
-      // ONLY SUPPORTS FILES AT THE MOMENT
-      int i = find_file(token);
-      if(i != -1)
-      {
-        printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
-        continue;
-      }
-      printf("Error: File not found.\n");
+      stat(token);
     }
     else if (!(strcmp(token[0], "get")))
     {
@@ -194,7 +189,7 @@ int main()
     }
     else if (!(strcmp(token[0], "cd")))
     {
-      cd(token);
+      cd(token[1]);
     }
     else if (!(strcmp(token[0], "ls")))
     {
@@ -206,7 +201,7 @@ int main()
     }
     else if (!(strcmp(token[0], "del")))
     {
-      del();
+      del(token);
     }
     else if (!(strcmp(token[0], "undel")))
     {
@@ -329,19 +324,62 @@ void print_info()
   printf("\n");
 }
 
-void cd(char **token)
+void cd(char *token)
 {
-  // only supports cding back a directorie at the moment, not forward
-  int i = find_folder(token);
-  if(i != -1)
+  // ... TO DO 
+  char *array[100];
+  int token_count = 0;
+
+  array[token_count] = strtok(token, "/");
+
+  while(array[token_count] != NULL)
   {
-    int offset = LBAToOffset(dir[i].ClusterLow);
-    fseek(fp, offset, SEEK_SET);
-    fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
-    load_dir();
-    return;
+    token_count++;
+    array[token_count] = strtok(NULL, "/");
   }
-  printf("Error: Folder not found.\n");
+
+  char temp[10];
+  char dir_lower[16][11] = {0};
+  int folder_loc[16] = {0};
+  int folder_count = 0;
+
+  for(int i = 0; i < 16; i++)
+  {
+    // Save the file's attribute as a hex value into a string
+    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+
+    if(!(strcmp(temp, "0x10")))
+    {
+      folder_loc[folder_count++] = i;
+      for(int j = 0; j < 11; j++)
+      {
+        dir_lower[i][j] = tolower(dir[i].DIR_Name[j]);
+      }
+      // printf("%s\n", dir_lower[i]);
+    }
+  }
+
+  for(int k = 0; k < 16; k++)
+  {
+    // printf("%d\n", folder_loc[k]);
+  }
+
+  for(int j = 0; j < folder_count; j++)
+  {
+    if(!strcmp("..", array[j]))
+    {
+      printf("BACKWARDS\n");
+    }
+    else
+    {
+      printf("FORWARDS\n");
+      int offset = LBAToOffset(dir[folder_loc[j]].ClusterLow);
+      printf("%d\n", offset);
+      fseek(fp, offset, SEEK_SET);
+      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+      load_dir();
+    }
+  }
 }
 
 void ls()
@@ -367,7 +405,7 @@ void get(char **token)
   char saved_input[strlen(token[1])];
   strcpy(saved_input, token[1]);
 
-  int i = find_file(token);
+  int i = find(token);
   if(i != -1)
   {
     int offset = LBAToOffset(dir[i].ClusterLow);
@@ -399,7 +437,7 @@ void read_f(char **token)
   int position = atoi(token[2]);
   int num_bytes = atoi(token[3]);
 
-  int i = find_file(token);
+  int i = find(token);
   if(i != -1)
   {
     int offset = LBAToOffset(dir[i].ClusterLow);
@@ -414,7 +452,7 @@ void read_f(char **token)
   printf("Error: File not found.\n");
 }
 
-int find_file(char **token)
+int find(char **token)
 {
   // Make two temp strings, format them similarly, and compare to find file
   // Make temp string with everything up to file extention
@@ -437,7 +475,7 @@ int find_file(char **token)
     sprintf(temp, "0x%02X", dir[i].DIR_Attr);
 
     // If the it's a file (0x01 and 0x20) and the file names match 
-    if(!strcmp(trimmed_input, trimmed_file) && (!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x20"))))
+    if(!strcmp(trimmed_input, trimmed_file) && (!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20"))))
     {
       return i;
     }
@@ -445,40 +483,41 @@ int find_file(char **token)
   return -1;
 }
 
-int find_folder(char **token)
+void del(char **token)
 {
-  // Make two temp strings, format them similarly, and compare to find folder
-  // Make temp string with everything up to file extention
-  char *trimmed_input = strtok(token[1], "/");
-  // Make another string with the length of the input (+1 for '\0')
-  char trimmed_folder[strlen(trimmed_input) + 1];
-
-  char temp[10];
-  // Loop through directory
-  for(int i = 0; i < 16; i++)
+  int i = find(token);
+  if(i != -1)
   {
-    // Format the dir folder name to lowecase so we can compare
-    for(int j = 0; j < strlen(trimmed_input); j++)
-    {
-      trimmed_folder[j] = tolower(dir[i].DIR_Name[j]);
-    }
-    trimmed_folder[strlen(trimmed_input)] = '\0';
-    
-    // Save the folder's attribute as a hex value into a string
-    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
-
-    // If the it's a folder (0x10 and the folder names match 
-    if(!strcmp(trimmed_input, trimmed_folder) && !(strcmp(temp, "0x10")))
-    {
-      return i;
-    }
+    last_deleted_file_loc = i;
+    last_deleted_file = dir[i].DIR_Name[0];
+    dir[i].DIR_Name[0] = 229;
+    dir[i].DIR_Attr = 4;
+    return;
   }
-  return -1;
+  printf("Error: File not found.\n");
 }
 
+void undel()
+{
+  if(last_deleted_file != -1 || last_deleted_file_loc != -1)
+  {
+    dir[last_deleted_file_loc].DIR_Attr = 1;
+    dir[last_deleted_file_loc].DIR_Name[0] = last_deleted_file;
+    return;
+  }
+  printf("Error: No file to undelete.\n");
+}
 
-void del(){}
-void undel(){}
+void stat(char **token)
+{
+  int i = find(token);
+  if(i != -1)
+  {
+    printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
+    return;
+  }
+  printf("Error: File not found.\n");
+}
 
 //get 
 // int offset = LBAToOffset(17);
