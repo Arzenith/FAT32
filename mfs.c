@@ -39,52 +39,31 @@ struct __attribute__((__packed__)) DirectoryEntry
   uint32_t size;
 };
 
-struct DirectoryEntry dir[16];
-
-FILE *fp = NULL;
-int last_deleted_file = -1;
-int last_deleted_file_loc = -1;
-
-/*
-  LBAToOffset function returns the value of the address in that block of data
-*/
-int LBAToOffset(int32_t sector)
-{
-  //handles root dir quirk
-  if(sector == 0)
-  {
-    sector = 2;
-  }
-  return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec);
-}
-
-/*
-  NextLB returns unsigned interger for next block address of file
-*/
-int16_t NextLB(int32_t sector)
-{
-  int FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
-  int16_t value;
-  fseek(fp, FATAddress, SEEK_SET);
-  fread(&value, 2, 1, fp);
-  return value;
-}
-
-void int_to_hex(int num);
+// Main Functions
 void open(char **token);
 void close_f();
 void print_info();
+void stat(char **token);
+void get(char **token);
 void cd(char *token);
 void ls();
-void read_f(char **token);
 void del();
 void undel();
-void load_dir();
-void load_img();
-void get(char **token);
-void stat(char **token);
 
+// Utility Functions
+void load_img();
+void load_dir();
+void read_f(char **token);
 int find(char **token);
+void int_to_hex(int num);
+int LBAToOffset(int32_t sector);
+int16_t NextLB(int32_t sector);
+
+struct DirectoryEntry dir[16];
+FILE *fp = NULL;
+
+int last_deleted_file = -1;
+int last_deleted_file_loc = -1;
 
 int main()
 {
@@ -119,8 +98,7 @@ int main()
     char *working_root = working_str;
 
     // Tokenize the input strings with whitespace used as the delimiter
-    while ( ( (arg_ptr = strsep(&working_str, WHITESPACE ) ) != NULL) && 
-              (token_count<MAX_NUM_ARGUMENTS))
+    while ( ( (arg_ptr = strsep(&working_str, WHITESPACE ) ) != NULL) && (token_count<MAX_NUM_ARGUMENTS))
     {
       token[token_count] = strndup( arg_ptr, MAX_COMMAND_SIZE );
       if( strlen( token[token_count] ) == 0 )
@@ -129,15 +107,6 @@ int main()
       }
         token_count++;
     }
-
-    // Now print the tokenized input as a debug check
-    // \TODO Remove this code and replace with your FAT32 functionality
-
-    // int token_index  = 0;
-    // for( token_index = 0; token_index < token_count; token_index ++ ) 
-    // {
-    //   printf("token[%d] = %s\n", token_index, token[token_index] );  
-    // }
 
     if (token[0] == NULL)
     {
@@ -219,30 +188,6 @@ int main()
   return 0;
 }
 
-void int_to_hex(int num)
-{
-  char reversedDigits[100];
-	int i = 0;
-	
-	while(num > 0) {
-		
-		int remain = num % 16;
-		
-		if(remain < 10)
-			reversedDigits[i] = '0' + remain;
-		else
-			reversedDigits[i] = 'A' + (remain - 10);
-		
-		num = num / 16;
-		i++;
-	}
-	
-  printf("0x");
-	while(i--) {
-		printf("%c", reversedDigits[i]);
-	}
-}
-
 void open(char **token)
 {
   if(fp != NULL)
@@ -280,30 +225,6 @@ void close_f()
   }
 }
 
-void load_img()
-{
-  fseek(fp, 11, SEEK_SET);
-  fread(&BPB_BytsPerSec, 2, 1, fp);
-  fseek(fp, 13, SEEK_SET);
-  fread(&BPB_SecPerClus, 1, 1, fp);
-  fseek(fp, 14, SEEK_SET);
-  fread(&BPB_RsvdSecCnt, 2, 1, fp);
-  fseek(fp, 16, SEEK_SET);
-  fread(&BPB_NumFATs, 1, 1, fp);
-  fseek(fp, 36, SEEK_SET);
-  fread(&BPB_FATz32, 4, 1, fp);
-}
-
-// Function loads in global data of .img file
-void load_dir()
-{
-  for (int i = 0; i < 16; i++)
-  {
-    // NULL terminate the string to remove the garbage
-    dir[i].DIR_Name[12] = '\0';
-  }
-}
-
 void print_info()
 {
   printf("BPB_BytsPerSec = %-5d\t", BPB_BytsPerSec);
@@ -322,6 +243,42 @@ void print_info()
   int_to_hex(BPB_FATz32);
 
   printf("\n");
+}
+
+void stat(char **token)
+{
+  int i = find(token);
+  if(i != -1)
+  {
+    printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
+    return;
+  }
+  printf("Error: File not found.\n");
+}
+
+void get(char **token)
+{
+  // Save input becuase find_file messes with token
+  char saved_input[strlen(token[1])];
+  strcpy(saved_input, token[1]);
+
+  int i = find(token);
+  if(i != -1)
+  {
+    int offset = LBAToOffset(dir[i].ClusterLow);
+
+    FILE *ofp = fopen(saved_input, "w");
+
+    uint8_t buffer[dir[i].size];
+
+    fseek(fp, offset, SEEK_SET);
+    fread(&buffer, dir[i].size + 1, 1, fp);
+    fwrite(&buffer, dir[i].size + 1, 1, ofp);
+
+    fclose(ofp);
+    return;
+  }
+  printf("Error: File not found.\n");
 }
 
 void cd(char *token)
@@ -399,29 +356,53 @@ void ls()
   }
 }
 
-void get(char **token)
+void del(char **token)
 {
-  // Save input becuase find_file messes with token
-  char saved_input[strlen(token[1])];
-  strcpy(saved_input, token[1]);
-
   int i = find(token);
   if(i != -1)
   {
-    int offset = LBAToOffset(dir[i].ClusterLow);
-
-    FILE *ofp = fopen(saved_input, "w");
-
-    uint8_t buffer[dir[i].size];
-
-    fseek(fp, offset, SEEK_SET);
-    fread(&buffer, dir[i].size + 1, 1, fp);
-    fwrite(&buffer, dir[i].size + 1, 1, ofp);
-
-    fclose(ofp);
+    last_deleted_file_loc = i;
+    last_deleted_file = dir[i].DIR_Name[0];
+    dir[i].DIR_Name[0] = 229;
+    dir[i].DIR_Attr = 4;
     return;
   }
   printf("Error: File not found.\n");
+}
+
+void undel()
+{
+  if(last_deleted_file != -1 || last_deleted_file_loc != -1)
+  {
+    dir[last_deleted_file_loc].DIR_Attr = 1;
+    dir[last_deleted_file_loc].DIR_Name[0] = last_deleted_file;
+    return;
+  }
+  printf("Error: No file to undelete.\n");
+}
+
+void load_img()
+{
+  fseek(fp, 11, SEEK_SET);
+  fread(&BPB_BytsPerSec, 2, 1, fp);
+  fseek(fp, 13, SEEK_SET);
+  fread(&BPB_SecPerClus, 1, 1, fp);
+  fseek(fp, 14, SEEK_SET);
+  fread(&BPB_RsvdSecCnt, 2, 1, fp);
+  fseek(fp, 16, SEEK_SET);
+  fread(&BPB_NumFATs, 1, 1, fp);
+  fseek(fp, 36, SEEK_SET);
+  fread(&BPB_FATz32, 4, 1, fp);
+}
+
+// Function loads in global data of .img file
+void load_dir()
+{
+  for (int i = 0; i < 16; i++)
+  {
+    // NULL terminate the string to remove the garbage
+    dir[i].DIR_Name[12] = '\0';
+  }
 }
 
 void read_f(char **token)
@@ -483,40 +464,53 @@ int find(char **token)
   return -1;
 }
 
-void del(char **token)
+void int_to_hex(int num)
 {
-  int i = find(token);
-  if(i != -1)
-  {
-    last_deleted_file_loc = i;
-    last_deleted_file = dir[i].DIR_Name[0];
-    dir[i].DIR_Name[0] = 229;
-    dir[i].DIR_Attr = 4;
-    return;
-  }
-  printf("Error: File not found.\n");
+  char reversedDigits[100];
+	int i = 0;
+	
+	while(num > 0) {
+		
+		int remain = num % 16;
+		
+		if(remain < 10)
+			reversedDigits[i] = '0' + remain;
+		else
+			reversedDigits[i] = 'A' + (remain - 10);
+		
+		num = num / 16;
+		i++;
+	}
+	
+  printf("0x");
+	while(i--) {
+		printf("%c", reversedDigits[i]);
+	}
 }
 
-void undel()
+/*
+  LBAToOffset function returns the value of the address in that block of data
+*/
+int LBAToOffset(int32_t sector)
 {
-  if(last_deleted_file != -1 || last_deleted_file_loc != -1)
+  //handles root dir quirk
+  if(sector == 0)
   {
-    dir[last_deleted_file_loc].DIR_Attr = 1;
-    dir[last_deleted_file_loc].DIR_Name[0] = last_deleted_file;
-    return;
+    sector = 2;
   }
-  printf("Error: No file to undelete.\n");
+  return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec);
 }
 
-void stat(char **token)
+/*
+  NextLB returns unsigned interger for next block address of file
+*/
+int16_t NextLB(int32_t sector)
 {
-  int i = find(token);
-  if(i != -1)
-  {
-    printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
-    return;
-  }
-  printf("Error: File not found.\n");
+  int FATAddress = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (sector * 4);
+  int16_t value;
+  fseek(fp, FATAddress, SEEK_SET);
+  fread(&value, 2, 1, fp);
+  return value;
 }
 
 //get 
