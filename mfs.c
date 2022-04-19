@@ -207,7 +207,7 @@ void open(char **token)
   {
     printf("Error: File system image already open.\n");
   }
-  else if (fp = fopen(token[1], "r")) 
+  else if ((fp = fopen(token[1], "r"))) 
   {
     printf("Opening file.\n");
   }
@@ -404,13 +404,12 @@ void cd(char **token)
 
 void ls()
 {
-  char temp[10];
   // Loop through directory...
   int i;
   for(i = 0; i < 16; i++)
   {
     // Only print files with attributes "0x01", "0x10", "0x20"
-    if(dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20 && dir[i].DIR_Name[0] != 229 && dir[i].DIR_Name[0] != -27)
+    if(dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20)
     {
       printf("%s\n", dir[i].DIR_Name);
     } 
