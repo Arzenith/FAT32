@@ -77,6 +77,7 @@ FILE *fp = NULL;
 
 int last_deleted_file = -1;
 int last_deleted_file_loc = -1;
+int last_cd_folder = -1;
 
 int main()
 {
@@ -219,6 +220,9 @@ void open(char **token)
   // Fseek to root dir, now that they've opened the image
   fseek(fp, (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec) + (BPB_RsvdSecCnt * BPB_BytsPerSec), SEEK_SET);
   fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+
+  last_cd_folder = (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec) + (BPB_RsvdSecCnt * BPB_BytsPerSec);
+  printf("%x\n", LBAToOffset(dir[0].ClusterLow));
 
   load_dir();
 }
@@ -370,12 +374,17 @@ void cd(char **token)
   int i;
   int offset;
   Node *temp = head;
+  // last_cd_folder = LBAToOffset(dir[0].ClusterLow);
+  printf("0x100400 = %X\n", LBAToOffset(dir[0].ClusterLow));
   while(temp)
   {
     i = find_folder(temp->folder_name);
 
     if(i == -1)
     {
+      fseek(fp, 0x100400, SEEK_SET);
+      fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
+      load_dir();
       printf("Error: Could not find folder.\n");
       break;
     }
@@ -387,6 +396,7 @@ void cd(char **token)
     load_dir();
 
     temp = temp->next;
+    
   }
   
   // Free linked list
@@ -565,28 +575,21 @@ int find(char **token)
 
 int find_folder(char *token)
 {
-  // Make two temp strings, format them similarly, and compare to find folder
-  // Make temp string with everything up to file extention
-  char *trimmed_input = strtok(token, "/");
-  // Make another string with the length of the input (+1 for '\0')
-  char trimmed_folder[strlen(trimmed_input)];
+  char expanded_name[12];
+  memset(expanded_name, ' ', 12);
+  strncpy(expanded_name, token, strlen(token));
 
-  char temp[10];
   // Loop through directory
   for(int i = 0; i < 16; i++)
   {
     // Format the dir folder name to lowecase so we can compare
-    for(int j = 0; j < strlen(trimmed_input); j++)
+    for(int j = 0; j < 11; j++)
     {
-      trimmed_folder[j] = tolower(dir[i].DIR_Name[j]);
+      expanded_name[j] = toupper(expanded_name[j]);
     }
-    trimmed_folder[strlen(trimmed_input)] = '\0';
-    
-    // Save the folder's attribute as a hex value into a string
-    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
+    expanded_name[12] = '\0';
 
-    // If the it's a folder (0x10 and the folder names match 
-    if(!strcmp(trimmed_input, trimmed_folder) && !(strcmp(temp, "0x10")))
+    if(!strncmp(dir[i].DIR_Name, expanded_name, 11))
     {
       return i;
     }
