@@ -406,7 +406,8 @@ void ls()
 {
   char temp[10];
   // Loop through directory...
-  for (int i = 0; i < 16; i++)
+  int i;
+  for(i = 0; i < 16; i++)
   {
     // Only print files with attributes "0x01", "0x10", "0x20"
     if(dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20 && dir[i].DIR_Name[0] != 229 && dir[i].DIR_Name[0] != -27)
@@ -518,7 +519,8 @@ void load_img()
 
 void load_dir()
 {
-  for (int i = 0; i < 16; i++)
+  int i;
+  for(i = 0; i < 16; i++)
   {
     // NULL terminate the string to remove the garbage
     dir[i].DIR_Name[12] = '\0';
@@ -533,6 +535,7 @@ void load_dir()
 
 int find_file(char *input)
 {
+  // Format the input like the FAT32.img file saves their names
   char expanded_name[12];
   memset( expanded_name, ' ', 12 );
 
@@ -549,19 +552,21 @@ int find_file(char *input)
 
   expanded_name[11] = '\0';
 
-  for(int i = 0; i < 16; i++)
+  int i, j;
+  for(i = 0; i < 16; i++)
   {
-    int j;
-    for( j = 0; j < 11; j++ )
+    for(j = 0; j < 11; j++)
     {
       expanded_name[j] = toupper( expanded_name[j] );
     }
 
+    // Once formatted similarly, compare
     if( strncmp( expanded_name, dir[i].DIR_Name, 11 ) == 0 )
     {
       return i;
     }
   }
+
   return -1;
 }
 
@@ -571,16 +576,17 @@ int find_folder(char *token)
   memset(expanded_name, ' ', 12);
   strncpy(expanded_name, token, strlen(token));
 
-  // Loop through directory
-  for(int i = 0; i < 16; i++)
+  int i, j;
+  for(i = 0; i < 16; i++)
   {
     // Format the dir folder name to lowecase so we can compare
-    for(int j = 0; j < 11; j++)
+    for(j = 0; j < 11; j++)
     {
       expanded_name[j] = toupper(expanded_name[j]);
     }
     expanded_name[12] = '\0';
 
+    // Once formatted similarly, compare
     if(!strncmp(dir[i].DIR_Name, expanded_name, 11))
     {
       return i;
