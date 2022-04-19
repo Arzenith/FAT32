@@ -66,7 +66,6 @@ void load_img();          // Function loads data of fat32 image
 void load_dir();          // Function formats directory names and hides previously deleted files
 int find(char **);        // Function finds file/folder in directory (returns location in directory)
 int find_folder(char *);  // Function finds folder in directory (returns location in directory)
-void int_to_hex(int);     // Function takes integer and prints hex value to screen
 int LBAToOffset(int32_t); // Function returns the value of the address in that block of data
 int16_t NextLB(int32_t);  // Function returns the value for next block address of file
 
@@ -223,7 +222,6 @@ void open(char **token)
   fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
 
   last_cd_folder = (BPB_NumFATs * BPB_FATz32 * BPB_BytsPerSec) + (BPB_RsvdSecCnt * BPB_BytsPerSec);
-  printf("%x\n", LBAToOffset(dir[0].ClusterLow));
 
   load_dir();
 }
@@ -243,22 +241,15 @@ void close_f()
 
 void print_info()
 {
-  printf("BPB_BytsPerSec = %-5d\t", BPB_BytsPerSec);
-  int_to_hex(BPB_BytsPerSec);
+  printf("BPB_BytsPerSec = %-5d\t0x%x\n", BPB_BytsPerSec, BPB_BytsPerSec);
 
-  printf("\nBPB_SecPerClus = %-5d\t", BPB_SecPerClus);
-  int_to_hex(BPB_SecPerClus);
+  printf("BPB_SecPerClus = %-5d\t0x%x\n", BPB_SecPerClus, BPB_SecPerClus);
 
-  printf("\nBPB_RsvdSecCnt = %-5d\t", BPB_RsvdSecCnt);
-  int_to_hex(BPB_RsvdSecCnt);
+  printf("BPB_RsvdSecCnt = %-5d\t0x%x\n", BPB_RsvdSecCnt, BPB_RsvdSecCnt);
 
-  printf("\nBPB_NumFATs    = %-5d\t", BPB_NumFATs);
-  int_to_hex(BPB_NumFATs);
+  printf("BPB_NumFATs    = %-5d\t0x%x\n", BPB_NumFATs, BPB_NumFATs);
 
-  printf("\nBPB_FATz32     = %-5d\t", BPB_FATz32);
-  int_to_hex(BPB_FATz32);
-
-  printf("\n");
+  printf("BPB_FATz32     = %-5d\t0x%x\n", BPB_FATz32, BPB_FATz32);
 }
 
 void stat(char **token)
@@ -376,8 +367,6 @@ void cd(char **token)
   int i;
  
   Node *temp = head;
-  // last_cd_folder = LBAToOffset(dir[0].ClusterLow);
-  printf("0x100400 = %X\n", LBAToOffset(dir[0].ClusterLow));
   while(temp)
   {
     i = find_folder(temp->folder_name);
@@ -399,8 +388,8 @@ void cd(char **token)
     load_dir();
     
     temp = temp->next;
-    
   }
+  
   last_offset = offset;
   // Free linked list
   temp = head;
@@ -419,11 +408,8 @@ void ls()
   // Loop through directory...
   for (int i = 0; i < 16; i++)
   {
-    // Save the file's attribute as a hex value into a string
-    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
-
     // Only print files with attributes "0x01", "0x10", "0x20"
-    if(!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20") && dir[i].DIR_Name[0] != 229) && dir[i].DIR_Name[0] != -27)
+    if(dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x10 || dir[i].DIR_Attr == 0x20 && dir[i].DIR_Name[0] != 229 && dir[i].DIR_Name[0] != -27)
     {
       printf("%s\n", dir[i].DIR_Name);
     } 
@@ -545,6 +531,7 @@ void load_dir()
   }
 }
 
+// NEED TO FIX THIS entering "b" works... (first letter)
 int find(char **token)
 {
   // Make two temp strings, format them similarly, and compare to find file
@@ -563,12 +550,9 @@ int find(char **token)
       trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
     }
     trimmed_file[strlen(trimmed_input)] = '\0';
-    
-    // Save the file's attribute as a hex value into a string
-    sprintf(temp, "0x%02X", dir[i].DIR_Attr);
 
     // If the it's a file (0x01 and 0x20) and the file names match 
-    if(!strcmp(trimmed_input, trimmed_file) && (!(strcmp(temp, "0x01")) || !(strcmp(temp, "0x10")) || !(strcmp(temp, "0x20"))))
+    if(dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x20)
     {
       return i;
     }
@@ -598,30 +582,6 @@ int find_folder(char *token)
     }
   }
   return -1;
-}
-
-void int_to_hex(int num)
-{
-  char reversedDigits[100];
-	int i = 0;
-	
-	while(num > 0) {
-		
-		int remain = num % 16;
-		
-		if(remain < 10)
-			reversedDigits[i] = '0' + remain;
-		else
-			reversedDigits[i] = 'A' + (remain - 10);
-		
-		num = num / 16;
-		i++;
-	}
-	
-  printf("0x");
-	while(i--) {
-		printf("%c", reversedDigits[i]);
-	}
 }
 
 int LBAToOffset(int32_t sector)
