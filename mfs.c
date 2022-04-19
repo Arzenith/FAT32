@@ -78,6 +78,7 @@ FILE *fp = NULL;
 int last_deleted_file = -1;
 int last_deleted_file_loc = -1;
 int last_cd_folder = -1;
+int last_offset = 0x100400;
 
 int main()
 {
@@ -331,6 +332,7 @@ void get(char **token)
 
 void cd(char **token)
 {
+  int offset;
   if(token[1] == NULL)
   {
     printf("Error: Not enough arguments.\n");
@@ -372,7 +374,7 @@ void cd(char **token)
   }
 
   int i;
-  int offset;
+ 
   Node *temp = head;
   // last_cd_folder = LBAToOffset(dir[0].ClusterLow);
   printf("0x100400 = %X\n", LBAToOffset(dir[0].ClusterLow));
@@ -382,9 +384,10 @@ void cd(char **token)
 
     if(i == -1)
     {
-      fseek(fp, 0x100400, SEEK_SET);
+      fseek(fp, last_offset, SEEK_SET);
       fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
       load_dir();
+      
       printf("Error: Could not find folder.\n");
       break;
     }
@@ -394,11 +397,11 @@ void cd(char **token)
     fseek(fp, offset, SEEK_SET);
     fread(&dir[0], sizeof(struct DirectoryEntry), 16, fp);
     load_dir();
-
+    
     temp = temp->next;
     
   }
-  
+  last_offset = offset;
   // Free linked list
   temp = head;
   while (head != NULL)
