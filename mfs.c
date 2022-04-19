@@ -64,7 +64,7 @@ void undel();             // Function undeletes *last* file delted in fat32 imag
 // Utility Functions
 void load_img();          // Function loads data of fat32 image 
 void load_dir();          // Function formats directory names and hides previously deleted files
-int find(char **);        // Function finds file/folder in directory (returns location in directory)
+int find_file(char *);    // Function finds file in directory (returns location in directory)
 int find_folder(char *);  // Function finds folder in directory (returns location in directory)
 int LBAToOffset(int32_t); // Function returns the value of the address in that block of data
 int16_t NextLB(int32_t);  // Function returns the value for next block address of file
@@ -260,7 +260,7 @@ void stat(char **token)
     return;
   }
 
-  int i = find(token);
+  int i = find_file(token[1]);
   if(i != -1)
   {
     printf("File Attribute\t\tSize\t\tStarting Cluster Number\n%d\t\t\t%d\t\t%d\n", dir[i].DIR_Attr, dir[i].size, dir[i].ClusterLow);
@@ -281,7 +281,7 @@ void get(char **token)
   char saved_input[strlen(token[1])];
   strcpy(saved_input, token[1]);
 
-  int i = find(token);
+  int i = find_file(token[1]);
   if(i != -1)
   {
     FILE *ofp = fopen(saved_input, "w");
@@ -427,7 +427,7 @@ void read_f(char **token)
   int position = atoi(token[2]);
   int num_bytes = atoi(token[3]);
 
-  int i = find(token);
+  int i = find_file(token[1]);
   if(i != -1)
   {
     uint8_t buffer[BPB_BytsPerSec];
@@ -473,7 +473,7 @@ void del(char **token)
     return;
   }
 
-  int i = find(token);
+  int i = find_file(token[1]);
   if(i != -1)
   {
     // Save file data so we can undelete later
@@ -531,28 +531,33 @@ void load_dir()
   }
 }
 
-// NEED TO FIX THIS entering "b" works... (first letter)
-int find(char **token)
+int find_file(char *input)
 {
-  // Make two temp strings, format them similarly, and compare to find file
-  // Make temp string with everything up to file extention
-  char *trimmed_input = strtok(token[1], ".");
-  // Make another string with the length of the input (+1 for '\0')
-  char trimmed_file[strlen(trimmed_input) + 1];
+  char expanded_name[12];
+  memset( expanded_name, ' ', 12 );
 
-  char temp[10];
-  // Loop through directory
+  char *token = strtok( input, "." );
+
+  strncpy( expanded_name, token, strlen( token ) );
+
+  token = strtok( NULL, "." );
+
+  if( token )
+  {
+    strncpy( (char*)(expanded_name+8), token, strlen(token ) );
+  }
+
+  expanded_name[11] = '\0';
+
   for(int i = 0; i < 16; i++)
   {
-    // Format the dir file name to lowecase so we can compare
-    for(int j = 0; j < strlen(trimmed_input); j++)
+    int j;
+    for( j = 0; j < 11; j++ )
     {
-      trimmed_file[j] = tolower(dir[i].DIR_Name[j]);
+      expanded_name[j] = toupper( expanded_name[j] );
     }
-    trimmed_file[strlen(trimmed_input)] = '\0';
 
-    // If the it's a file (0x01 and 0x20) and the file names match 
-    if(dir[i].DIR_Attr == 0x01 || dir[i].DIR_Attr == 0x20)
+    if( strncmp( expanded_name, dir[i].DIR_Name, 11 ) == 0 )
     {
       return i;
     }
