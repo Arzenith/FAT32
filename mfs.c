@@ -214,6 +214,7 @@ void open(char **token)
   else
   {
     printf("Error: File system image not found.\n");
+    return;
   }
 
   load_img();
