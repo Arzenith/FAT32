@@ -209,7 +209,7 @@ void open(char **token)
   }
   else if ((fp = fopen(token[1], "r"))) 
   {
-    printf("Opening file.\n");
+    //printf("Opening file.\n");
   }
   else
   {
