@@ -4,7 +4,7 @@ In this project, we study concepts of file allocation methods by diving into one
 
 ## To run
 
-Clone the repo, and type `make` into your terminal. Then, type `./mfs`.
+Clone the repo, and type `./mfs` into your terminal.
 
 ## Commands to try
 
